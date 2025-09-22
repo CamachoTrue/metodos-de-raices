@@ -11,7 +11,7 @@ const selectedFn = ref('f')
 // -------- Parámetros --------
 const a = ref(1)
 const b = ref(2)
-const tol = ref(0.001)
+const tol = ref(0.001)    // en %
 const maxIter = ref(100)
 
 // -------- Resultados --------
@@ -20,13 +20,23 @@ const out = reactive({
   falsapos:  { root: null, froot: null, iters: 0 },
 })
 
+// -------- Tablas de tabulación (historial de iteraciones) --------
+const table = reactive({
+  biseccion: [],
+  falsapos:  [],
+})
+
 // -------- Utilidades --------
 function fx6(v) {
-  return Number.isFinite(v) ? v.toFixed(6) : 'NaN'
+  return Number.isFinite(v) ? Number(v).toFixed(6) : 'NaN'
 }
 function eaPercent(xNew, xOld) {
   const denom = Math.abs(xNew) > 0 ? Math.abs(xNew) : 1
   return Math.abs((xNew - xOld) / denom) * 100
+}
+function resetTables() {
+  table.biseccion = []
+  table.falsapos  = []
 }
 
 // -------- Métodos --------
@@ -35,13 +45,25 @@ function runBisection() {
   let xl = +a.value
   let xu = +b.value
   let fl = f(xl), fu = f(xu)
+
+  // limpia tabla previa de bisección
+  table.biseccion = []
+
   if (fl * fu > 0) {
     alert('f(a) y f(b) no tienen signos opuestos.')
+    out.biseccion = { root: null, froot: null, iters: 0 }
     return
   }
 
   let xr = (xl + xu) / 2
   let it = 0, ea = 100
+
+  // guarda primera fila (iteración 0 con xr inicial)
+  table.biseccion.push({
+    i: it, xl, xu, xr,
+    fl, fu, fr: f(xr),
+    ea: null
+  })
 
   while (it < +maxIter.value && ea > +tol.value) {
     it++
@@ -55,6 +77,15 @@ function runBisection() {
     }
     const xrNew = (xl + xu) / 2
     ea = eaPercent(xrNew, xr)
+
+    // registra fila
+    table.biseccion.push({
+      i: it,
+      xl, xu, xr: xrNew,
+      fl, fu, fr: f(xrNew),
+      ea
+    })
+
     xr = xrNew
     if (Math.abs(f(xr)) < 1e-10) break
   }
@@ -67,13 +98,25 @@ function runFalsePosition() {
   let xl = +a.value
   let xu = +b.value
   let fl = f(xl), fu = f(xu)
+
+  // limpia tabla previa de regla falsa
+  table.falsapos = []
+
   if (fl * fu > 0) {
     alert('f(a) y f(b) no tienen signos opuestos.')
+    out.falsapos = { root: null, froot: null, iters: 0 }
     return
   }
 
   let xr = xu - fu * (xl - xu) / (fl - fu)
   let it = 0, ea = 100
+
+  // registra iteración 0
+  table.falsapos.push({
+    i: it, xl, xu, xr,
+    fl, fu, fr: f(xr),
+    ea: null
+  })
 
   while (it < +maxIter.value && ea > +tol.value) {
     it++
@@ -87,6 +130,14 @@ function runFalsePosition() {
     }
     const xrNew = xu - fu * (xl - xu) / (fl - fu)
     ea = eaPercent(xrNew, xr)
+
+    table.falsapos.push({
+      i: it,
+      xl, xu, xr: xrNew,
+      fl, fu, fr: f(xrNew),
+      ea
+    })
+
     xr = xrNew
     if (Math.abs(f(xr)) < 1e-10) break
   }
@@ -96,12 +147,12 @@ function runFalsePosition() {
 </script>
 
 <template>
-  <div style="max-width:600px;margin:auto;padding:20px;">
+  <div style="max-width:1000px;margin:auto;padding:20px;">
     <h1>Métodos de Raíces</h1>
 
     <!-- Selección de función -->
     <label>Selecciona función:</label>
-    <select v-model="selectedFn">
+    <select v-model="selectedFn" @change="resetTables">
       <option value="f">f(x) = 4x³ - 6x² + 7x - 2.3</option>
       <option value="g">g(x) = x²·√(|cos(x)|) - 5</option>
     </select>
@@ -109,16 +160,16 @@ function runFalsePosition() {
     <!-- Intervalo -->
     <div style="margin-top:10px;">
       <label>Intervalo [a, b]:</label>
-      <input v-model.number="a" type="number" step="any" placeholder="a" />
-      <input v-model.number="b" type="number" step="any" placeholder="b" />
+      <input v-model.number="a" type="number" step="any" placeholder="a" @change="resetTables" />
+      <input v-model.number="b" type="number" step="any" placeholder="b" @change="resetTables" />
     </div>
 
     <!-- Tolerancia y máx iter -->
     <div style="margin-top:10px;">
       <label>Tolerancia (%):</label>
-      <input v-model.number="tol" type="number" step="any" />
+      <input v-model.number="tol" type="number" step="any" @change="resetTables" />
       <label>Máx iteraciones:</label>
-      <input v-model.number="maxIter" type="number" />
+      <input v-model.number="maxIter" type="number" @change="resetTables" />
     </div>
 
     <!-- Botones -->
@@ -136,6 +187,77 @@ function runFalsePosition() {
       <p><b>Regla Falsa:</b> Raíz = {{ fx6(out.falsapos.root) }}, 
          f(raíz) = {{ fx6(out.falsapos.froot) }}, 
          Iteraciones = {{ out.falsapos.iters }}</p>
+    </div>
+
+    <!-- Tablas de tabulación -->
+    <div style="margin-top:20px;">
+      <h2>Tabulación de Bisección</h2>
+      <div v-if="table.biseccion.length">
+        <div style="overflow:auto;">
+          <table border="1" cellpadding="6" style="border-collapse:collapse; min-width:900px;">
+            <thead>
+              <tr>
+                <th>i</th>
+                <th>xl</th>
+                <th>xu</th>
+                <th>xr</th>
+                <th>f(xl)</th>
+                <th>f(xu)</th>
+                <th>f(xr)</th>
+                <th>ea (%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in table.biseccion" :key="'bis'+row.i">
+                <td>{{ row.i }}</td>
+                <td>{{ fx6(row.xl) }}</td>
+                <td>{{ fx6(row.xu) }}</td>
+                <td>{{ fx6(row.xr) }}</td>
+                <td>{{ fx6(row.fl) }}</td>
+                <td>{{ fx6(row.fu) }}</td>
+                <td>{{ fx6(row.fr) }}</td>
+                <td>{{ row.ea == null ? '-' : fx6(row.ea) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p v-else>Corre Bisección para ver la tabla.</p>
+    </div>
+
+    <div style="margin-top:25px;">
+      <h2>Tabulación de Regla Falsa</h2>
+      <div v-if="table.falsapos.length">
+        <div style="overflow:auto;">
+          <table border="1" cellpadding="6" style="border-collapse:collapse; min-width:900px;">
+            <thead>
+              <tr>
+                <th>i</th>
+                <th>xl</th>
+                <th>xu</th>
+                <th>xr</th>
+                <th>f(xl)</th>
+                <th>f(xu)</th>
+                <th>f(xr)</th>
+                <th>ea (%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in table.falsapos" :key="'rf'+row.i">
+                <td>{{ row.i }}</td>
+                <td>{{ fx6(row.xl) }}</td>
+                <td>{{ fx6(row.xu) }}</td>
+                <td>{{ fx6(row.xr) }}</td>
+                <td>{{ fx6(row.fl) }}</td>
+                <td>{{ fx6(row.fu) }}</td>
+                <td>{{ fx6(row.fr) }}</td>
+                <td>{{ row.ea == null ? '-' : fx6(row.ea) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p v-else>Corre Regla Falsa para ver la tabla.</p>
     </div>
   </div>
 </template>
